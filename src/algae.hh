@@ -5,20 +5,26 @@
 #include <QImage>
 #include <QMainWindow>
 
+#include <opencv2/opencv.hpp>
+
 namespace AlgaeConstants {
 	static constexpr int THUMBNAIL_SIZE = 128;
 	static constexpr int TEST_SIZE = 64;
+	static constexpr int HIST_BINS = 256;
 }
 
 struct AlgaeImage {
 	QFileInfo file;
 	QPixmap thumb;
-	std::vector<QRgb> test;
+	std::vector<uint8_t> test;
 	bool valid = false;
 	uint32_t sortValue = -1;
 	
+	cv::Mat b_hist, g_hist, r_hist;
+	
 	void Initialize();
-	static double Compare(AlgaeImage const & A, AlgaeImage const & B);
+	static double ComparePix(AlgaeImage const & A, AlgaeImage const & B);
+	static double CompareHist(AlgaeImage const & A, AlgaeImage const & B);
 };
 
 class AlgaeCore : public QMainWindow {

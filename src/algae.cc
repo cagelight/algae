@@ -24,15 +24,23 @@ AlgaeCore::AlgaeCore() : QMainWindow() {
 	QWidget * progBoxW = new QWidget(controlW); new QHBoxLayout(progBoxW);
 	progBoxW->layout()->setContentsMargins(0, 0, 0, 0);
 	QPushButton * initBut = new QPushButton(controlW);
-	QPushButton * sortBut = new QPushButton(controlW);
+	QPushButton * sortBut1 = new QPushButton(controlW);
+	QPushButton * sortBut2 = new QPushButton(controlW);
+	QPushButton * sortBut3 = new QPushButton(controlW);
 	QPushButton * renameBut = new QPushButton(controlW);
 	initBut->setText("Initialize");
-	sortBut->setText("Sort");
-	sortBut->setDisabled(true);
+	sortBut1->setText("Sort [Pix]");
+	sortBut2->setText("Sort [Hist]");
+	sortBut3->setText("Sort [Balanced]");
+	sortBut1->setDisabled(true);
+	sortBut2->setDisabled(true);
+	sortBut3->setDisabled(true);
 	renameBut->setText("Rename");
 	renameBut->setDisabled(true);
 	progBoxW->layout()->addWidget(initBut);
-	progBoxW->layout()->addWidget(sortBut);
+	progBoxW->layout()->addWidget(sortBut1);
+	progBoxW->layout()->addWidget(sortBut2);
+	progBoxW->layout()->addWidget(sortBut3);
 	progBoxW->layout()->addWidget(renameBut);
 	QProgressBar * progBar = new QProgressBar(controlW);
 	progBoxW->layout()->addWidget(progBar);
@@ -121,7 +129,7 @@ AlgaeCore::AlgaeCore() : QMainWindow() {
 		}
 	});
 	
-	connect(sortBut, &QPushButton::clicked, [=, this](){
+	auto doSort = [=, this](){
 		
 		progBar->setMinimum(0);
 		progBar->setMaximum(0);
@@ -255,6 +263,158 @@ AlgaeCore::AlgaeCore() : QMainWindow() {
 		progBar->setFormat("Done");
 		
 		renameBut->setDisabled(false);
+	};
+	
+	connect(sortBut1, &QPushButton::clicked, [=, this](){
+		
+		struct {
+			QMutex progMut;
+			QAtomicInteger<int64_t> w_i = 0;
+			std::chrono::steady_clock::time_point lastUp = std::chrono::steady_clock::now();
+		} deltaWorkData;
+
+		auto deltaWorkFunc = [=, this, &deltaWorkData](){
+			while (true) {
+				int64_t i = deltaWorkData.w_i++;
+				if (i >= m_comp.size())
+					break;
+				
+				AlgaePairComp & apc = m_comp[i];
+				apc.value = AlgaeImage::ComparePix( m_images[apc.x], m_images[apc.y] );
+				
+				deltaWorkData.progMut.lock();
+				auto now = std::chrono::steady_clock::now();
+				if (std::chrono::duration_cast<std::chrono::milliseconds>(now - deltaWorkData.lastUp).count() > 50) {
+					progBar->setValue(i);
+					deltaWorkData.lastUp = now;
+				}
+				deltaWorkData.progMut.unlock();
+			}
+		};
+		
+		progBar->setMinimum(0);
+		progBar->setFormat("Generating Deltas %p%");
+		progBar->setValue(0);
+		progBar->setMaximum(m_comp.size());
+		
+		std::vector<std::thread> threads;
+		for (size_t i = 0; i < std::thread::hardware_concurrency() / 2; i++) threads.emplace_back(deltaWorkFunc);
+		for (auto & t : threads) t.join();
+		threads.clear();
+		
+		progBar->setMinimum(0);
+		progBar->setMaximum(0);
+		progBar->setValue(0);
+		progBar->setFormat("Sorting...");
+		
+		std::sort(m_comp.begin(), m_comp.end());
+		
+		regenerateLinks();
+		displayImages();
+		
+		doSort();
+	});
+	
+	connect(sortBut2, &QPushButton::clicked, [=, this](){
+		
+		struct {
+			QMutex progMut;
+			QAtomicInteger<int64_t> w_i = 0;
+			std::chrono::steady_clock::time_point lastUp = std::chrono::steady_clock::now();
+		} deltaWorkData;
+
+		auto deltaWorkFunc = [=, this, &deltaWorkData](){
+			while (true) {
+				int64_t i = deltaWorkData.w_i++;
+				if (i >= m_comp.size())
+					break;
+				
+				AlgaePairComp & apc = m_comp[i];
+				apc.value = AlgaeImage::CompareHist( m_images[apc.x], m_images[apc.y] );
+				
+				deltaWorkData.progMut.lock();
+				auto now = std::chrono::steady_clock::now();
+				if (std::chrono::duration_cast<std::chrono::milliseconds>(now - deltaWorkData.lastUp).count() > 50) {
+					progBar->setValue(i);
+					deltaWorkData.lastUp = now;
+				}
+				deltaWorkData.progMut.unlock();
+			}
+		};
+		
+		progBar->setMinimum(0);
+		progBar->setFormat("Generating Deltas %p%");
+		progBar->setValue(0);
+		progBar->setMaximum(m_comp.size());
+		
+		std::vector<std::thread> threads;
+		for (size_t i = 0; i < std::thread::hardware_concurrency() / 2; i++) threads.emplace_back(deltaWorkFunc);
+		for (auto & t : threads) t.join();
+		threads.clear();
+		
+		progBar->setMinimum(0);
+		progBar->setMaximum(0);
+		progBar->setValue(0);
+		progBar->setFormat("Sorting...");
+		
+		std::sort(m_comp.begin(), m_comp.end());
+		
+		regenerateLinks();
+		displayImages();
+		
+		doSort();
+	});
+	
+	connect(sortBut3, &QPushButton::clicked, [=, this](){
+		
+		struct {
+			QMutex progMut;
+			QAtomicInteger<int64_t> w_i = 0;
+			std::chrono::steady_clock::time_point lastUp = std::chrono::steady_clock::now();
+		} deltaWorkData;
+
+		auto deltaWorkFunc = [=, this, &deltaWorkData](){
+			while (true) {
+				int64_t i = deltaWorkData.w_i++;
+				if (i >= m_comp.size())
+					break;
+				
+				AlgaePairComp & apc = m_comp[i];
+				apc.value = 0;
+				apc.value += 0.3 * AlgaeImage::ComparePix( m_images[apc.x], m_images[apc.y] );
+				apc.value += 0.7 * AlgaeImage::CompareHist( m_images[apc.x], m_images[apc.y] );
+				
+				deltaWorkData.progMut.lock();
+				auto now = std::chrono::steady_clock::now();
+				if (std::chrono::duration_cast<std::chrono::milliseconds>(now - deltaWorkData.lastUp).count() > 50) {
+					progBar->setValue(i);
+					deltaWorkData.lastUp = now;
+				}
+				deltaWorkData.progMut.unlock();
+			}
+		};
+		
+		progBar->setMinimum(0);
+		progBar->setFormat("Generating Deltas %p%");
+		progBar->setValue(0);
+		progBar->setMaximum(m_comp.size());
+		
+		std::vector<std::thread> threads;
+		for (size_t i = 0; i < std::thread::hardware_concurrency() / 2; i++) threads.emplace_back(deltaWorkFunc);
+		for (auto & t : threads) t.join();
+		threads.clear();
+		
+		progBar->setMinimum(0);
+		progBar->setMaximum(0);
+		progBar->setValue(0);
+		progBar->setFormat("Sorting...");
+		
+		std::sort(m_comp.begin(), m_comp.end());
+		
+		regenerateLinks();
+		displayImages();
+		
+		doSort();
 	});
 	
 	connect(initBut, &QPushButton::clicked, [=, this](){
@@ -292,11 +452,6 @@ AlgaeCore::AlgaeCore() : QMainWindow() {
 		m_images.removeIf([](AlgaeImage const & img){ return !img.valid; });
 		qDebug() << m_images.size() << "images loaded and validated";
 		
-		struct {
-			QMutex progMut;
-			QAtomicInteger<int64_t> w_i = 0;
-		} deltaWorkData;
-		
 		int64_t compMax = ((std::pow(m_images.size(), 2ULL) + m_images.size()) / 2ULL) - m_images.size();
 		m_comp.reserve(compMax);
 		qDebug() << compMax << "unique delta pairs";
@@ -309,39 +464,6 @@ AlgaeCore::AlgaeCore() : QMainWindow() {
 			ai.y = y;
 		}
 		
-		auto deltaWorkFunc = [=, this, &deltaWorkData](){
-			while (true) {
-				int64_t i = deltaWorkData.w_i++;
-				if (i >= m_comp.size())
-					break;
-				
-				AlgaePairComp & apc = m_comp[i];
-				apc.value = AlgaeImage::Compare( m_images[apc.x], m_images[apc.y] );
-
-				//deltaWorkData.progMut.lock();
-				//progBar->setValue(progBar->value() + 1);
-				//deltaWorkData.progMut.unlock();
-			}
-		};
-		
-		progBar->setMinimum(0);
-		progBar->setFormat("Generating Deltas...");
-		progBar->setValue(0);
-		progBar->setMaximum(0 /*m_comp.size()*/);
-		
-		for (size_t i = 0; i < std::thread::hardware_concurrency() / 2; i++) threads.emplace_back(deltaWorkFunc);
-		for (auto & t : threads) t.join();
-		threads.clear();
-		
-		Q_ASSERT(compMax == m_comp.size());
-		
-		progBar->setMinimum(0);
-		progBar->setMaximum(0);
-		progBar->setValue(0);
-		progBar->setFormat("Sorting...");
-		
-		std::sort(m_comp.begin(), m_comp.end());
-		
 		regenerateLinks();
 		displayImages();
 		
@@ -350,7 +472,9 @@ AlgaeCore::AlgaeCore() : QMainWindow() {
 		progBar->setValue(1);
 		progBar->setFormat("Done");
 		
-		sortBut->setDisabled(false);
+		sortBut1->setDisabled(false);
+		sortBut2->setDisabled(false);
+		sortBut3->setDisabled(false);
 	});
 }
 
@@ -361,15 +485,34 @@ void AlgaeImage::Initialize() {
 	this->thumb.convertFromImage(img.scaled(AlgaeConstants::THUMBNAIL_SIZE, AlgaeConstants::THUMBNAIL_SIZE, Qt::KeepAspectRatio, Qt::SmoothTransformation));
 	
 	QImage testI = img.scaled(AlgaeConstants::TEST_SIZE, AlgaeConstants::TEST_SIZE, Qt::IgnoreAspectRatio, Qt::SmoothTransformation).convertedTo(QImage::Format_RGB32);
-	this->test.reserve(testI.width() * testI.height());
+	this->test.reserve(testI.width() * testI.height() * 3);
 	for (int x = 0; x < AlgaeConstants::TEST_SIZE; x++) for (int y = 0; y < AlgaeConstants::TEST_SIZE; y++) {
-		test.push_back( testI.pixel(x, y) );
+		QRgb c = testI.pixel(x, y);
+		test.push_back( qRed(c) );
+		test.push_back( qGreen(c) );
+		test.push_back( qBlue(c) );
 	}
+	
+	cv::Mat cvm = cv::Mat(AlgaeConstants::TEST_SIZE, AlgaeConstants::TEST_SIZE, CV_8UC3, (void *)test.data());
+	std::vector<cv::Mat> bgr_planes;
+    cv::split( cvm, bgr_planes );
+	
+	int histSize = 256;
+    float range[] = { 0, 256 }; //the upper boundary is exclusive
+    const float* histRange[] = { range };
+	
+	calcHist(&bgr_planes[0], 1, 0, cv::Mat(), b_hist, 1, &histSize, histRange, true, false);
+	calcHist(&bgr_planes[1], 1, 0, cv::Mat(), g_hist, 1, &histSize, histRange, true, false);
+	calcHist(&bgr_planes[2], 1, 0, cv::Mat(), r_hist, 1, &histSize, histRange, true, false);
+	
+	normalize(b_hist, b_hist, 1.0, 0.0, cv::NORM_L1);
+	normalize(g_hist, g_hist, 1.0, 0.0, cv::NORM_L1);
+	normalize(r_hist, r_hist, 1.0, 0.0, cv::NORM_L1);
 	
 	valid = true;
 }
 
-double AlgaeImage::Compare(AlgaeImage const & A, AlgaeImage const & B) {
+double AlgaeImage::ComparePix(AlgaeImage const & A, AlgaeImage const & B) {
 	
 	double match = 0;
 	uint_fast16_t res = AlgaeConstants::TEST_SIZE;
@@ -388,4 +531,15 @@ double AlgaeImage::Compare(AlgaeImage const & A, AlgaeImage const & B) {
 	}
 	
 	return match / (res * res);
+}
+
+
+double AlgaeImage::CompareHist(AlgaeImage const & A, AlgaeImage const & B) {
+	
+	double rH = compareHist(A.r_hist, B.r_hist, cv::HISTCMP_BHATTACHARYYA);
+	double gH = compareHist(A.g_hist, B.g_hist, cv::HISTCMP_BHATTACHARYYA);
+	double bH = compareHist(A.b_hist, B.b_hist, cv::HISTCMP_BHATTACHARYYA);
+	double sH = (rH + gH + bH) / 3;
+	
+	return 1 - sH;
 }
